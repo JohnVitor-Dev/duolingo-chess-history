@@ -68,7 +68,7 @@ function addExportButton(row) {
     if (row.dataset.pgnButtonAdded === "true") return;
 
     const exportButton = document.createElement("button");
-    exportButton.textContent = "Exportar PGN";
+    exportButton.textContent = "Export PGN";
     exportButton.type = "button";
 
     exportButton.addEventListener("click", async (event) => {
@@ -78,7 +78,7 @@ function addExportButton(row) {
     });
 
     const copyButton = document.createElement("button");
-    copyButton.textContent = "Copiar PGN";
+    copyButton.textContent = "Copy PGN";
     copyButton.type = "button";
 
     copyButton.addEventListener("click", async (event) => {
@@ -219,7 +219,7 @@ async function handleExportClick(row, button) {
             error
         );
 
-        button.textContent = "Erro";
+        button.textContent = "Error";
 
     } finally {
         setTimeout(() => {
@@ -233,36 +233,36 @@ async function handleCopyClick(row, button) {
     const matchId = row.dataset.matchId;
 
     if (!matchId) {
-        console.error("[Duolingo Chess] Linha não possui matchId.");
+        console.error("[Duolingo Chess] The row does not have a matchId.");
         return;
     }
 
-    console.log("[Duolingo Chess] Copiando partida:", matchId);
+    console.log("[Duolingo Chess] Copying a game:", matchId);
 
     button.disabled = true;
-    button.textContent = "Carregando...";
+    button.textContent = "Loading...";
 
     try {
         const pgn = await generatePGN(row);
 
         await navigator.clipboard.writeText(pgn);
 
-        console.log("[Duolingo Chess] PGN copiado:\n" + pgn);
+        console.log("[Duolingo Chess] PGN Copied:\n" + pgn);
 
-        button.textContent = "Copiado!";
+        button.textContent = "Copied!";
 
     } catch (error) {
         console.error(
-            "[Duolingo Chess] Erro ao copiar PGN:",
+            "[Duolingo Chess] Error copying PGN:",
             error
         );
 
-        button.textContent = "Erro";
+        button.textContent = "Error";
 
     } finally {
         setTimeout(() => {
             button.disabled = false;
-            button.textContent = "Copiar PGN";
+            button.textContent = "Copy PGN";
         }, 1500);
     }
 }
@@ -278,11 +278,11 @@ async function generatePGN(row) {
     const match = response.match;
 
     if (!match) {
-        throw new Error("Dados da partida não encontrados.");
+        throw new Error("Match data not found.");
     }
 
     if (!Array.isArray(match.moveHistory)) {
-        throw new Error("moveHistory não encontrado.");
+        throw new Error("moveHistory not found.");
     }
 
     const chess = new Chess();
@@ -300,7 +300,7 @@ async function generatePGN(row) {
         });
 
         if (!move) {
-            throw new Error(`Movimento inválido: ${uciMove}`);
+            throw new Error(`Invalid move: ${uciMove}`);
         }
 
         sanMoves.push(move.san);
@@ -315,11 +315,11 @@ async function generatePGN(row) {
     let blackName;
 
     if (match.playerColor === "white") {
-        whiteName = "Você";
+        whiteName = "You";
         blackName = opponentName;
     } else {
         whiteName = opponentName;
-        blackName = "Você";
+        blackName = "You";
     }
 
     const moveText = buildMoveText(sanMoves, result);
@@ -447,7 +447,7 @@ function inspectMatches() {
         lastRowCount = rows.length;
 
         console.log(
-            "[Duolingo Chess] Partidas encontradas:",
+            "[Duolingo Chess] Match found:",
             rows.length
         );
     }
