@@ -1,0 +1,35 @@
+{
+    "manifest_version": 3,
+    "name": "Duolingo Chess History",
+    "version": "0.1.0",
+    "description": "Export Duolingo Chess games as PGN files.",
+    "permissions": [
+        "webRequest",
+        "storage"
+    ],
+    "host_permissions": [
+        "https://www.duolingo.com/*",
+        "https://pt.duolingo.com/*"
+    ],
+    "background": {
+        "scripts": [
+            "background.js"
+        ],
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://www.duolingo.com/*",
+                "https://pt.duolingo.com/*"
+            ],
+            "js": [
+                "chess/chess.js",
+                "content.js"
+            ]
+        }
+    ],
+    "action": {
+        "default_title": "Duolingo Chess History"
+    }
+}
