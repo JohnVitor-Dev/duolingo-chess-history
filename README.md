@@ -2,6 +2,9 @@
 
 Browser extension that allows you to export your Duolingo Chess games as PGN files.
 
+<p align="center">
+    <img src="https://github.com/JohnVitor-Dev/duolingo-chess-history/blob/e976de3c22cb547157c591c4cf4317b6e3735455/duolingo-chess-history.png" alt="Screenshot of the extension in action" width="600">
+</p>
 
 ## Features
 
