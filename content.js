@@ -5,45 +5,149 @@ const api = globalThis.browser ?? globalThis.chrome;
 console.log("[Duolingo Chess] Content script loaded.");
 
 let lastRowCount = 0;
-let historyRequested = false;
 let historyMatchCount = 0;
 let historyMatches = [];
+let fallbackFetchTimer = null;
+let fallbackAttempted = false;
 
-async function loadMatchHistory() {
-    if (historyRequested) return;
-    historyRequested = true;
+// --------------------------------------------------
+// Fonte primária de dados: interceptação de rede
+//
+// O network-interceptor.js (rodando no world MAIN) nos avisa toda
+// vez que a PRÓPRIA página busca a lista de partidas - inclusive
+// depois de uma partida nova terminar, já que o Duolingo precisa
+// buscar os dados atualizados pra renderizar a nova row. Usamos
+// exatamente essa resposta, sem fazer uma requisição paralela nossa
+// e sem depender de "adivinhar" pela contagem de rows no DOM.
+// --------------------------------------------------
+
+window.addEventListener("duolingo-chess:matches", (event) => {
+    const matches = event.detail?.data?.matchHistory ?? [];
+
+    console.log(
+        "[Duolingo Chess] Histórico interceptado da própria página:",
+        matches.length,
+        "partidas"
+    );
+
+    applyFreshHistory(matches);
+});
+
+function applyFreshHistory(matches) {
+    historyMatches = mergeHistory(historyMatches, matches);
+    historyMatchCount = historyMatches.length;
+    fallbackAttempted = false;
+
+    clearFallbackTimer();
+
+    limitHistoryRows(historyMatchCount);
+    attachMatchesToRows(historyMatches);
+}
+
+// --------------------------------------------------
+// Mescla o histórico já conhecido com uma resposta nova.
+//
+// O endpoint de partidas é usado tanto pra buscar a lista
+// completa (carregamento inicial, ou refetch depois de uma
+// partida nova terminar) quanto pra buscar só a PRÓXIMA PÁGINA
+// quando o usuário rola a lista pra baixo. Nesse segundo caso,
+// a resposta interceptada tem só um lote, bem menor que o total
+// de linhas já renderizadas no DOM.
+//
+// Se tratássemos toda resposta como "a lista inteira e definitiva"
+// (substituindo historyMatches direto), uma resposta de paginação
+// faria a gente achar que sobraram linhas "extras" no DOM e
+// removê-las - é exatamente isso que causava a lista bugando ao
+// rolar. Por isso: só substituímos quando a resposta nova já cobre
+// tudo que tínhamos (ou seja, é de fato a fonte completa); caso
+// contrário, só acrescentamos ao final os itens que ainda não
+// conhecíamos.
+// --------------------------------------------------
+
+function mergeHistory(existing, incoming) {
+    if (existing.length === 0) {
+        return incoming;
+    }
+
+    const incomingIds = new Set(
+        incoming.map((match) => match.matchId)
+    );
+
+    const coversExisting = existing.every(
+        (match) => incomingIds.has(match.matchId)
+    );
+
+    if (coversExisting) {
+        return incoming;
+    }
+
+    const existingIds = new Set(
+        existing.map((match) => match.matchId)
+    );
+
+    const merged = existing.slice();
+
+    for (const match of incoming) {
+        if (!existingIds.has(match.matchId)) {
+            merged.push(match);
+        }
+    }
+
+    return merged;
+}
+
+function clearFallbackTimer() {
+    if (fallbackFetchTimer) {
+        clearTimeout(fallbackFetchTimer);
+        fallbackFetchTimer = null;
+    }
+}
+
+// --------------------------------------------------
+// Rede de segurança: busca via background
+//
+// Só é usada se a interceptação de rede não trouxer dados a tempo
+// (ex.: primeiro carregamento da página, extensão instalada depois
+// da página já ter carregado, ou o Duolingo mudando a forma como
+// busca os dados). Nunca reaplica dados velhos por cima de rows
+// já deslocadas - só entra em ação quando os dados que temos estão
+// desatualizados em relação ao DOM.
+// --------------------------------------------------
+
+async function fetchHistoryFallback() {
+    if (fallbackAttempted) return;
+
+    fallbackAttempted = true;
 
     try {
-        console.log("[Duolingo Chess] Solicitando histórico...");
+        console.log(
+            "[Duolingo Chess] Fallback: buscando histórico via background..."
+        );
 
-        const history = await browser.runtime.sendMessage({
+        const history = await api.runtime.sendMessage({
             type: "GET_MATCH_HISTORY"
         });
 
-        const matches = history.matchHistory ?? [];
-
-        // Guarda as partidas para podermos reassociá-las
-        // sempre que o Duolingo recriar as linhas.
-        historyMatches = matches;
-        historyMatchCount = matches.length;
-
-        console.log(
-            "[Duolingo Chess] Histórico recebido:",
-            matches.length,
-            "partidas"
-        );
-
-        attachMatchesToRows(matches);
-        limitHistoryRows(historyMatchCount);
+        applyFreshHistory(history.matchHistory ?? []);
 
     } catch (error) {
-        historyRequested = false;
-
         console.error(
-            "[Duolingo Chess] Erro ao carregar histórico:",
+            "[Duolingo Chess] Erro no fallback de histórico:",
             error
         );
+
+        // Permite tentar de novo numa próxima mutação do DOM.
+        fallbackAttempted = false;
     }
+}
+
+function scheduleFallbackIfStale() {
+    if (fallbackFetchTimer || fallbackAttempted) return;
+
+    fallbackFetchTimer = setTimeout(() => {
+        fallbackFetchTimer = null;
+        fetchHistoryFallback();
+    }, 1500);
 }
 
 function attachMatchesToRows(matches) {
@@ -54,9 +158,13 @@ function attachMatchesToRows(matches) {
     rows.forEach((row, index) => {
         const match = matches[index];
 
-        if (!match?.matchId) return;
+        if (!match?.matchId) {
+            delete row.dataset.matchId;
+            delete row.dataset.opponentName;
+            return;
+        }
 
-        row.dataset.matchId = match.matchId;
+        row.dataset.matchId = String(match.matchId);
         row.dataset.opponentName =
             match.opponentName || "Duolingo Bot";
 
@@ -270,7 +378,7 @@ async function handleCopyClick(row, button) {
 async function generatePGN(row) {
     const matchId = row.dataset.matchId;
 
-    const response = await browser.runtime.sendMessage({
+    const response = await api.runtime.sendMessage({
         type: "GET_MATCH",
         matchId
     });
@@ -443,20 +551,36 @@ function inspectMatches() {
 
     if (rows.length === 0) return;
 
-    if (rows.length !== lastRowCount) {
-        lastRowCount = rows.length;
+    const rowCountChanged = rows.length !== lastRowCount;
 
+    if (rowCountChanged) {
         console.log(
-            "[Duolingo Chess] Match found:",
+            "[Duolingo Chess] Match history changed:",
+            lastRowCount,
+            "→",
             rows.length
         );
+
+        lastRowCount = rows.length;
     }
 
-    if (!historyRequested) {
-        loadMatchHistory();
+    // Ainda não recebemos nenhum histórico (nem por interceptação de
+    // rede, nem pelo fallback). Agenda uma tentativa via background.
+    if (historyMatches.length === 0) {
+        scheduleFallbackIfStale();
         return;
     }
 
+    // O DOM já mudou (nova partida apareceu ou sumiu) mas ainda não
+    // recebemos o histórico atualizado via interceptação de rede.
+    // NÃO mexe nas rows com dados velhos - só espera os dados
+    // corretos chegarem. Se demorar demais, aciona o fallback.
+    if (rows.length !== historyMatchCount) {
+        scheduleFallbackIfStale();
+        return;
+    }
+
+    limitHistoryRows(historyMatchCount);
     attachMatchesToRows(historyMatches);
 }
 
@@ -474,14 +598,28 @@ function limitHistoryRows(maxRows) {
     });
 }
 
-const observer = new MutationObserver(() => {
-    if (historyMatchCount > 0) {
-        limitHistoryRows(historyMatchCount);
-        attachMatchesToRows(historyMatches);
+let inspectDebounceTimer = null;
+
+function scheduleInspectMatches() {
+    if (inspectDebounceTimer) {
+        clearTimeout(inspectDebounceTimer);
     }
 
-    inspectMatches();
+    inspectDebounceTimer = setTimeout(() => {
+        inspectDebounceTimer = null;
+        inspectMatches();
+    }, 100);
+}
+
+const observer = new MutationObserver(() => {
+    scheduleInspectMatches();
 });
+
+// Alguns navegadores podem carregar o content script depois que a
+// interceptação já perdeu a primeira requisição de histórico (ex.:
+// extensão instalada com a página já aberta). Se isso acontecer, o
+// próprio inspectMatches() vai acionar o fallback via background
+// assim que perceber que ainda não tem dados.
 
 observer.observe(document.body, {
     childList: true,

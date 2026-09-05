@@ -1,15 +1,32 @@
 {
     "manifest_version": 3,
     "name": "Duolingo Chess History",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Export Duolingo Chess games as PGN files.",
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "duolingo-chess-history@example.com",
+            "data_collection_permissions": {
+                "required": [
+                    "none"
+                ]
+            }
+        }
+    },
+    "icons": {
+        "16": "icons/icon-16.png",
+        "32": "icons/icon-32.png",
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png",
+        "256": "icons/icon-256.png"
+    },
     "permissions": [
         "webRequest",
         "storage"
     ],
     "host_permissions": [
-        "https://www.duolingo.com/*",
-        "https://pt.duolingo.com/*"
+        "https://*.duolingo.com/*",
+        "https://duolingo.com/*"
     ],
     "background": {
         "scripts": [
@@ -20,8 +37,19 @@
     "content_scripts": [
         {
             "matches": [
-                "https://www.duolingo.com/*",
-                "https://pt.duolingo.com/*"
+                "https://*.duolingo.com/*",
+                "https://duolingo.com/*"
+            ],
+            "js": [
+                "network-interceptor.js"
+            ],
+            "world": "MAIN",
+            "run_at": "document_start"
+        },
+        {
+            "matches": [
+                "https://*.duolingo.com/*",
+                "https://duolingo.com/*"
             ],
             "js": [
                 "chess/chess.js",

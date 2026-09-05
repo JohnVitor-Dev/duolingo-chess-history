@@ -128,10 +128,9 @@ api.runtime.onMessage.addListener(
 
             const url =
                 `https://www.duolingo.com/chess/1/${userId}/matches` +
-                `?sectionNumber=1` +
-                `&matchesLimit=10000`;
+                `?matchesLimit=10000`;
 
-            const response = await fetch(url);
+            const response = await fetch(url, { credentials: "include" });
 
             if (!response.ok) {
                 throw new Error(
@@ -161,7 +160,7 @@ api.runtime.onMessage.addListener(
             const url =
                 `https://www.duolingo.com/chess/1/${userId}/matches/${encodedMatchId}`;
 
-            const response = await fetch(url);
+            const response = await fetch(url, { credentials: "include" });
 
             if (!response.ok) {
                 throw new Error(
